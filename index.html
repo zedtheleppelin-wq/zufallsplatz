@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Zufallsplatz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #ffffff;
+    --pink: #c93b87;
+    --pink-soft: #fdeef5;
+    --line: #ecc3d9;
+    --pad: clamp(.8rem, 2.4vw, 2rem);
+    box-sizing: border-box;
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh; background: var(--bg); color: var(--pink);
+    font-family: "Manrope", system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 90rem; margin: 0 auto; padding: var(--pad); }
+
+  .back { margin-bottom: .8rem; text-align: center; font-size: .78rem; font-weight: 600; opacity: .55; letter-spacing: .08em; }
+  .tafel { width: min(100%, 24rem); margin: clamp(1rem, 2.4vh, 1.5rem) auto 0; padding: .55rem 1rem .55rem calc(1rem + .4em); text-align: center; border: 1.3px solid var(--pink); border-radius: .9rem; font-size: .8rem; font-weight: 700; letter-spacing: .4em; text-transform: uppercase; }
+
+  .wrap { container-type: inline-size; margin: 0 auto; max-width: calc(68vh * 1.6); }
+  .canvas { --u: calc(100cqw / 16); position: relative; width: 100%; aspect-ratio: 16 / 10; background: #fff; user-select: none; -webkit-user-select: none; }
+  .canvas::after { content: ""; position: absolute; inset: 0; pointer-events: none; border: 1.3px dashed var(--line); border-radius: .9rem; }
+
+  .table {
+    position: absolute; left: calc(var(--u) * var(--x, 0)); top: calc(var(--u) * var(--y, 0));
+    width: calc(var(--u) * 2.4); height: calc(var(--u) * 1.3);
+    display: flex; flex-direction: row-reverse; gap: calc(var(--u) * .1); padding: calc(var(--u) * .15);
+    border: 1.3px solid var(--pink); border-radius: calc(var(--u) * .42); background: #fff;
+  }
+  .seat {
+    flex: 1 1 0; min-width: 0; min-height: 0;
+    background: var(--pink-soft); border: 1.3px dashed var(--line);
+    border-radius: calc(var(--u) * .3);
+    transition: background .45s ease, border-color .45s ease, box-shadow .45s ease;
+  }
+  /* Lauflicht */
+  .seat.on {
+    background: var(--pink); border: 1.3px solid var(--pink);
+    box-shadow: 0 0 0 calc(var(--u) * .06) #fff, 0 0 calc(var(--u) * .5) calc(var(--u) * .1) rgba(201, 59, 135, .55);
+    transition: none;
+  }
+  /* Ziel */
+  .seat.win {
+    background: var(--pink); border: 1.3px solid var(--pink); position: relative; z-index: 2;
+    animation: win 1s ease-in-out infinite;
+  }
+  @keyframes win {
+    0%, 100% { box-shadow: 0 0 0 calc(var(--u) * .06) #fff, 0 0 calc(var(--u) * .4) calc(var(--u) * .08) rgba(201, 59, 135, .55); transform: scale(1); }
+    50%      { box-shadow: 0 0 0 calc(var(--u) * .08) #fff, 0 0 calc(var(--u) * .9) calc(var(--u) * .3) rgba(201, 59, 135, .7); transform: scale(1.12); }
+  }
+
+  .go { display: flex; justify-content: center; margin-top: clamp(1rem, 3vh, 2rem); }
+  .start {
+    font: inherit; font-size: clamp(1.2rem, 2.2vw, 1.6rem); font-weight: 800; letter-spacing: .02em;
+    color: #fff; background: var(--pink); border: 0; border-radius: 999px;
+    padding: .8rem 3.2rem; cursor: pointer;
+    box-shadow: 0 .5rem 1.4rem rgba(201, 59, 135, .3);
+    transition: transform .12s ease, background .2s ease, opacity .2s ease;
+  }
+  .start:hover { background: #a82c6d; }
+  .start:active { transform: scale(.96); }
+  .start:disabled { opacity: .45; cursor: default; }
+  .start:focus-visible { outline: 2px solid var(--pink); outline-offset: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="back">Rückseite des Raums</div>
+  <div class="wrap">
+    <div class="canvas" id="room" aria-label="Sitzplan"></div>
+  </div>
+  <div class="tafel">Tafel</div>
+  <div class="go"><button class="start" id="start" type="button">Start</button></div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var room = document.getElementById('room');
+  var btn = document.getElementById('start');
+
+  /* Sitzplan wie in der Vorlage: 4 Reihen mit je 4 Zweiertischen, Gang in der Mitte */
+  var tables = [];
+  for (var r = 0; r < 4; r++) for (var d = 0; d < 4; d++) {
+    var c = 3 - d;
+    tables.push({ x: 1.5 + c * 3 + (c >= 2 ? 1 : 0), y: 1.5 + (3 - r) * 2 });
+  }
+
+  var seats = [];
+  tables.forEach(function (t) {
+    var el = document.createElement('div');
+    el.className = 'table';
+    el.style.setProperty('--x', t.x); el.style.setProperty('--y', t.y);
+    for (var s = 0; s < 2; s++) {
+      var b = document.createElement('div');
+      b.className = 'seat';
+      el.appendChild(b);
+      // Mittelpunkt des Platzes (row-reverse: Platz 0 rechts)
+      seats.push({ el: b, x: t.x + 0.15 + 0.5 + (1 - s) * 1.1, y: t.y });
+    }
+    room.appendChild(el);
+  });
+
+  /* Laufreihenfolge: Reihe für Reihe, abwechselnd links→rechts und rechts→links (Schlangenlinie) */
+  var rows = {};
+  seats.forEach(function (s) { (rows[s.y] = rows[s.y] || []).push(s); });
+  var order = [];
+  Object.keys(rows).map(Number).sort(function (a, b) { return a - b; }).forEach(function (y, i) {
+    rows[y].sort(function (a, b) { return i % 2 ? b.x - a.x : a.x - b.x; });
+    order = order.concat(rows[y]);
+  });
+  var N = order.length;
+
+  function rnd(n) {
+    if (window.crypto && crypto.getRandomValues) {
+      var a = new Uint32Array(1), lim = Math.floor(4294967296 / n) * n;
+      do { crypto.getRandomValues(a); } while (a[0] >= lim);
+      return a[0] % n;
+    }
+    return Math.floor(Math.random() * n);
+  }
+
+  var pos = 0, running = false;
+  function light(i) {
+    var e = order[i].el;
+    e.classList.add('on');
+    setTimeout(function () { e.classList.remove('on'); }, 30);
+  }
+
+  btn.addEventListener('click', function () {
+    if (running) return;
+    running = true; btn.disabled = true;
+    order.forEach(function (s) { s.el.classList.remove('win', 'on'); });
+
+    // 2 bis 3 volle Runden, dann bis zum zufälligen Zielplatz
+    var target = rnd(N);
+    var steps = (2 + rnd(2)) * N + ((target - pos + N) % N);
+    var k = 0;
+
+    (function step() {
+      pos = (pos + 1) % N; k++;
+      if (k >= steps) {
+        order[pos].el.classList.add('win');
+        running = false; btn.disabled = false; btn.textContent = 'Nochmal';
+        return;
+      }
+      light(pos);
+      // erst schnell, zum Ende hin immer langsamer
+      var p = k / steps;
+      var delay = 30 + Math.pow(p, 5) * 420;
+      setTimeout(step, delay);
+    })();
+  });
+})();
+</script>
+</body>
+</html>
